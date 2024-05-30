@@ -1,0 +1,200 @@
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+
+const userSchema = new mongoose.Schema({
+    name: {
+        type: String,
+        required: true,
+    },
+    email: {
+        type: String,
+        required: true,
+        unique: true,
+    },
+    password: {
+        type: String,
+        required: true,
+    },
+});
+
+userSchema.pre('save', async function (next) {
+    if (!this.isModified('password')) {
+        return next();
+    }
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+});
+
+userSchema.methods.matchPassword = async function (enteredPassword) {
+    return await bcrypt.compare(enteredPassword, this.password);
+};
+
+const User = mongoose.model('User', userSchema);
+
+module.exports = User;
+
+const mongoose = require('mongoose');
+
+const productSchema = new mongoose.Schema({
+    name: {
+        type: String,
+        required: true,
+    },
+    description: {
+        type: String,
+        required: true,
+    },
+    price: {
+        type: Number,
+        required: true,
+    },
+    image: {
+        type: String,
+        required: true,
+    },
+    farmer: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true,
+    },
+});
+
+const Product = mongoose.model('Product', productSchema);
+
+module.exports = Product;
+
+#user control.js
+
+const User = require('../models/User');
+const jwt = require('jsonwebtoken');
+
+exports.registerUser = async (req, res) => {
+    const { name, email, password } = req.body;
+
+    try {
+        const user = await User.create({
+            name,
+            email,
+            password,
+        });
+
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+            expiresIn: '1h',
+        });
+
+        res.status(201).json({
+            success: true,
+            token,
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+            },
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            error: error.message,
+        });
+    }
+};
+
+exports.loginUser = async (req, res) => {
+    const { email, password } = req.body;
+
+    try {
+        const user = await User.findOne({ email });
+
+        if (!user || !(await user.matchPassword(password))) {
+            return res.status(401).json({
+                success: false,
+                error: 'Invalid email or password',
+            });
+        }
+
+        const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+            expiresIn: '1h',
+        });
+
+        res.status(200).json({
+            success: true,
+            token,
+            user: {
+                id: user._id,
+                name: user.name,
+                email: user.email,
+            },
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message,
+        });
+    }
+};
+
+#Routes
+const express = require('express');
+const { registerUser, loginUser } = require('../controllers/userController');
+
+const router = express.Router();
+
+router.post('/register', registerUser);
+router.post('/login', loginUser);
+
+module.exports = router;
+
+#routes
+
+const express = require('express');
+const { registerUser, loginUser } = require('../controllers/userController');
+
+const router = express.Router();
+
+router.post('/register', registerUser);
+router.post('/login', loginUser);
+
+module.exports = router;
+#control
+const Product = require('../models/Product');
+
+exports.createProduct = async (req, res) => {
+    const { name, description, price, image, farmer } = req.body;
+
+    try {
+        const product = await Product.create({
+            name,
+            description,
+            price,
+            image,
+            farmer,
+        });
+
+        res.status(201).json({
+            success: true,
+            product,
+        });
+    } catch (error) {
+        res.status(400).json({
+            success: false,
+            error: error.message,
+        });
+    }
+};
+
+exports.getProducts = async (req, res) => {
+    try {
+        const products = await Product.find().populate('farmer', 'name email');
+
+        res.status(200).json({
+            success: true,
+            products,
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            error: error.message,
+        });
+    }
+};
